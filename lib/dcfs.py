@@ -5,7 +5,7 @@ import os
 import pickle
 
 from collections import defaultdict
-from glue.segments import segment
+from glue.segments import segment, segmentlist
 from errno import *
 from stat import S_IFDIR, S_IFLNK, S_IFREG, ST_CTIME, ST_MTIME
 from sys import argv, exit
@@ -22,6 +22,7 @@ class DiskcacheFS(LoggingMixIn, Operations):
     def __init__(self, fname):
         self._file = fname
         self._cached_stat = os.stat(self._file)
+        self._prefix_len = 5
         self._gps_trunc_fact = 100000
 
         self._d0 = None
@@ -97,6 +98,9 @@ class DiskcacheFS(LoggingMixIn, Operations):
         return self._dir_attr(path)
 
     def _5_attr(self, path):
+        return self._dir_attr(path)
+
+    def _6_attr(self, path):
         return self._lnk_attr(path)
 
     def _0_list(self,path):
@@ -105,56 +109,41 @@ class DiskcacheFS(LoggingMixIn, Operations):
         return self._d0.keys()
 
     def _1_list(self,path):
-        # /
-        self.load()
-        print path
+        # /<extension>
+        ext = path[1:]
+        return list(set([f[:self._prefix_len] for f in self._d0[ext]]))
+    
+    def _2_list(self,path):
+        # /<extension>/<ft_prefix>
+        ext, prefix = path[1:].split('/')
+        return [f for f in self._d0[ext] if prefix in f[:self._prefix_len]]
 
-    #     def _1_list(self,path):
-    #         # /<ft_prefix>
-    #         path_d = self.diskcache.ft_prefix_d
-    #         # remove leading /
-    #         key = path[1:]
-    #         return list(path_d[key])
-    # 
-    #     def _2_list(self,path):
-    #         # /<ft_prefix>/<ft>
-    #         path_d = self.diskcache.ft_prefix_ft_d
-    #         key = tuple(path.split('/')[1:])
-    #         return list(path_d[key])
-    #        
-    #     def _3_list(self,path):
-    #         # /<ft_prefix>/<ft>/<site>
-    #         ret = set()
-    #         key = tuple(path[1:].split('/'))
-    #         _list = self.diskcache.ft_prefix_ft_site_d[key]
-    # 
-    #         for path, dur, ctime, _seg_list in _list:
-    #             for _seg in _seg_list:
-    #                 for _start in xrange(_seg[0], _seg[1], dur):
-    #                     ret.add(str(_start/self._gps_trunc_fact))
-    #         return list(ret)
-    #     
-    #     def _4_list(self,path):
-    #         # /<ft_prefix>/<ft>/<site>/<gps[:-5]>
-    #         ret = []
-    #         pre, ft, site, _gps = tuple(path[1:].split('/'))
-    #         key = (pre,ft,site)
-    #         _list = self.diskcache.ft_prefix_ft_site_d[key]
-    #         ext = self.diskcache.ext
-    #         gps = int(_gps) * self._gps_trunc_fact
-    #         GPS = gps + self._gps_trunc_fact
-    #         
-    #         gps_range = segment(gps,GPS)
-    #         for path, dur, ctime, _seg_list in _list:
-    #             for _seg in _seg_list:
-    #                 if _seg.intersects(gps_range):
-    #                     for _start in xrange(_seg[0], _seg[1], dur):
-    #                         if _start in gps_range:
-    #                             lfn = '%s-%s-%d-%d.%s' % (site, ft, _start, dur, ext)
-    #                             ret.append(lfn)
-    #                             
-    #         return ret
-    #     
+    def _3_list(self,path):
+        # /<extension>/<ft_prefix>/<ft>
+        ext, prefix, ft = path[1:].split('/')
+        return self._d1[(ext, ft)]
+
+    def _4_list(self,path):
+        # /<extension>/<ft_prefix>/<ft>/<site>
+        ext, prefix, ft, site = path[1:].split('/')
+        return map(str, set([ (seg[0]/self._gps_trunc_fact)
+            for dirname, dur, seglist in self._d2[(ext, ft, site)]
+            for seg in seglist]))
+
+    def _5_list(self,path):
+        # /<extension>/<ft_prefix>/<ft>/<site>/<gps>
+        ext, prefix, ft, site, gps = path[1:].split('/')
+        gps_start = int(gps) * self._gps_trunc_fact
+        gps_end = gps_start + self._gps_trunc_fact
+        gps_range = segment(gps_start, gps_end)
+        ret = []
+        for dirname, dur, seglist in self._d2[(ext, ft, site)]:
+            for seg in map(segment, seglist):
+                if seg.intersects(gps_range):
+                    ret.extend("%s-%s-%d-%d.%s" % (site, ft, start, dur, ext) 
+                               for start in xrange(seg[0], seg[1], dur) if start in gps_range)
+        return ret
+
     def chmod(self, path, mode):
         raise FuseOSError(ENOSYS)
 
@@ -202,20 +191,17 @@ class DiskcacheFS(LoggingMixIn, Operations):
 
     def readlink(self, path):
         # path must be this form:
-        # /<ft_prefix>/<ft>/<site>/<gps[:-5]>/<site>-<ft>-<gps>-<dur>.<ext>
+        # /<extension>/<ft_prefix>/<ft>/<site>/<gps[:self._prefix_len]>/<site>-<ft>-<gps>-<dur>.<ext>
         # use this to return list of all matching frame files
-        pre, ft, site, _gps, lfn = tuple(path[1:].split('/'))
-        _s, _ft, _gps, _dur_ext = lfn.split('-')
-        _dur, _ext = _dur_ext.split('.')
-        if _ext != self.diskcache.ext:
-            raise FuseOSError(ENOENT)
+        lfn = os.path.basename(path)
+        site, ft, _gps, _dur_ext = lfn.split('-')
         gps = int(_gps)
-        key = (pre, ft, site)
-        raise FuseOSError(ENOSYS)
-        # _list = self.diskcache.ft_prefix_ft_site_d[key]
-        # for path, dur, ctime, _seg_list in _list:
-        #     if gps in _seg_list:
-        #        return '/'.join([path,lfn])
+        _dur, ext = _dur_ext.split('.')
+        DUR = int(_dur)
+	for p, dur, seglist in self._d2[(ext, ft, site)]:
+            if gps < seglist[0][0] or gps >= seglist[-1][-1] or dur != DUR: continue
+            if gps in segmentlist(map(segment, seglist)):
+                return '/'.join([p,lfn])
 
     def release(self, path, fh):
         return close(fh)
