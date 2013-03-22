@@ -1,0 +1,16 @@
+Source: python-dcfs
+Section: python
+Priority: extra
+Maintainer: LIGO LDR team <ldr@ligo.org>
+Uploaders: Jeffery Kline <jeffery.kline@gmail.com>
+Build-Depends: debhelper (>= 7.0.50), python2.6 (>= 2.6.6), python-all-dev (>= 2.6.6)
+Standards-Version: 3.9.1
+Homepage: http://www.lsc-group.phys.uwm.edu/LDR
+X-Python-Version: >= 2.6
+
+Package: python-dcfs
+Architecture: any
+Pre-Depends: debconf (>= 1.5.36)
+Depends: ${misc:Depends}, ${python:Depends}, fuse-utils, libfuse2
+Description: DCFS package
+ FUSE-based filesystem that acts on output of pmdc
