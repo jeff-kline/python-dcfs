@@ -57,6 +57,7 @@ class DiskcacheFS(LoggingMixIn, Operations):
             self._d0 = pickle.load(fh)
             self._d1 = pickle.load(fh)
             self._d2 = pickle.load(fh)
+        self._cached_stat = os.stat(self._file)
 
     def _depth(self, path):
         return len([p for p in path[1:].split('/') if p])
@@ -105,7 +106,6 @@ class DiskcacheFS(LoggingMixIn, Operations):
 
     def _0_list(self,path):
         # /
-        self.load()
         return self._d0.keys()
 
     def _1_list(self,path):
@@ -181,6 +181,8 @@ class DiskcacheFS(LoggingMixIn, Operations):
         return read(fh, size)
 
     def readdir(self, path, fh):
+        # always have a fresh copy of the archive
+        self.load()
         try:
             depth = self._depth(path)
             ret = getattr(self, '_%d_list' % depth)(path)
