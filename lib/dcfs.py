@@ -3,6 +3,7 @@
 import logging
 import os
 import pickle
+import re
 
 from collections import defaultdict
 from glue.segments import segment, segmentlist
@@ -116,7 +117,7 @@ class DiskcacheFS(LoggingMixIn, Operations):
     def _2_list(self,path):
         # /<extension>/<ft_prefix>
         ext, prefix = path[1:].split('/')
-        return [f for f in self._d0[ext] if prefix in f[:self._prefix_len]]
+        return [f for f in self._d0[ext] if re.match(f[:self._prefix_len], prefix)]
 
     def _3_list(self,path):
         # /<extension>/<ft_prefix>/<ft>
