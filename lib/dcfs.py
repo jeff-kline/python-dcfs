@@ -140,6 +140,7 @@ class DiskcacheFS(LoggingMixIn, Operations):
         gps_end = gps_start + self._gps_trunc_fact
         gps_range = segment(gps_start, gps_end)
         ret = []
+        cache = set()
         for dirname, dur, seglist in self._d2[(ext, ft, site)]:
             for seg in map(segment, seglist):
                 if seg.intersects(gps_range):
@@ -147,9 +148,13 @@ class DiskcacheFS(LoggingMixIn, Operations):
                     # this is more general than what is possible with the diskcache
                     # for it allows /non-indexible/ filetypes to be shown
                     if self.local:
-                        globstr = "%s/%s-%s-%s*.%s" % (dirname, site, ft, gps[-5:], ext)
-                        self.log.debug("globstr: %s" % globstr)
-                        ret.extend(map(os.path.basename, glob.glob(globstr)))
+                        if dirname not in cache:
+                            # add local files exactly 1 time
+                            cache.add(dirname)
+                            self.log.debug("cache: %s" % str(cache))
+                            globstr = "%s/%s-%s-%s*.%s" % (dirname, site, ft, gps[-5:], ext)
+                            self.log.debug("globstr: %s" % globstr)
+                            ret.extend(map(os.path.basename, glob.glob(globstr)))
                         # if more than one segment is in the list, we must skip 
                         # it lest we get repeated lfns
                         break
@@ -262,4 +267,4 @@ if __name__ == '__main__':
     mpoint = argv[1]
     logging.basicConfig()
     logging.getLogger().setLevel(logging.DEBUG)
-    fuse = FUSE(DiskcacheFS(fname, local="/local" in mpoint), mpoint, foreground=True)
+    fuse = FUSE(DiskcacheFS(fname, local="/local" in mpoint), mpoint, foreground=True, allow_root=True)
