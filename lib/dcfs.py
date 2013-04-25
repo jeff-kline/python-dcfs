@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import glob
 import logging
 import os
 import pickle
@@ -20,11 +21,12 @@ if not hasattr(__builtins__, 'bytes'):
 class DiskcacheFS(LoggingMixIn, Operations):
     "diskcache filesystem"
 
-    def __init__(self, fname):
+    def __init__(self, fname, local=False):
         self._file = fname
         self._cached_stat = os.stat(self._file)
         self._prefix_len = 5
         self._gps_trunc_fact = 100000
+        self.local=local
 
         self._d0 = None
         self._d1 = None
@@ -141,7 +143,18 @@ class DiskcacheFS(LoggingMixIn, Operations):
         for dirname, dur, seglist in self._d2[(ext, ft, site)]:
             for seg in map(segment, seglist):
                 if seg.intersects(gps_range):
-                    ret.extend("%s-%s-%d-%d.%s" % (site, ft, start, dur, ext) 
+                    # local diskcache should return state on disk, 
+                    # this is more general than what is possible with the diskcache
+                    # for it allows /non-indexible/ filetypes to be shown
+                    if self.local:
+                        globstr = "%s/%s-%s-%s*.%s" % (dirname, site, ft, gps[-5:], ext)
+                        self.log.debug("globstr: %s" % globstr)
+                        ret.extend(map(os.path.basename, glob.glob(globstr)))
+                        # if more than one segment is in the list, we must skip 
+                        # it lest we get repeated lfns
+                        break
+                    else:
+                        ret.extend("%s-%s-%d-%d.%s" % (site, ft, start, dur, ext) 
                                for start in xrange(seg[0], seg[1], dur) if start in gps_range)
         return ret
 
@@ -203,8 +216,10 @@ class DiskcacheFS(LoggingMixIn, Operations):
         DUR = int(_dur)
 	for p, dur, seglist in self._d2[(ext, ft, site)]:
             if gps < seglist[0][0] or gps >= seglist[-1][-1] or dur != DUR: continue
+            fname = '/'.join([p,lfn])
             if gps in segmentlist(map(segment, seglist)):
-                return '/'.join([p,lfn])
+                if (self.local and os.path.exists(fname)) or not self.local:
+                    return fname
 
     def release(self, path, fh):
         return close(fh)
@@ -247,4 +262,4 @@ if __name__ == '__main__':
     mpoint = argv[1]
     logging.basicConfig()
     logging.getLogger().setLevel(logging.DEBUG)
-    fuse = FUSE(DiskcacheFS(fname), mpoint, foreground=True)
+    fuse = FUSE(DiskcacheFS(fname, local="/local" in mpoint), mpoint, foreground=True)
