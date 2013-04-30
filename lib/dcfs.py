@@ -6,7 +6,6 @@ import os
 import pickle
 import re
 
-from collections import defaultdict
 from glue.segments import segment, segmentlist
 from errno import *
 from stat import S_IFDIR, S_IFLNK, S_IFREG, ST_CTIME, ST_MTIME
@@ -87,9 +86,14 @@ class DiskcacheFS(LoggingMixIn, Operations):
         return ret
 
     def _0_attr(self, path):
+        # /
         return self._dir_attr(path)
 
     def _1_attr(self, path):
+        # /<extension>
+        ext = path[1:]
+        if ext not in self._d0:
+	    raise KeyError(ext)
         return self._dir_attr(path)
 
     def _2_attr(self, path):
